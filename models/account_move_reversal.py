@@ -98,6 +98,10 @@ class AccountMoveReversal(models.TransientModel):
     
         return refund
 
+class Defecto(models.Model):
+    _name = 'helpdesk.sector.defect'
+    name = fields.Char(string='Defecto')
+    sector = fields.Many2one('hr.department',string='Sector a cargo')
 
 class HelpdeskTag(models.Model):
     _inherit = 'helpdesk.tag'
@@ -113,7 +117,8 @@ class Helpdesk(models.Model):
         'helpdesk_ticket_id',
         string='Alertas de Calidad'
     )
-    
+    defect_type = fields.Many2one('helpdesk.sector.defect',string='Tipo de defecto')
+    sector_in_charge = fields.Many2one('hr.department',string='Sector a cargo',related='defect_type.sector')
 
 class QualityCheck(models.Model):
     _inherit = 'quality.alert'

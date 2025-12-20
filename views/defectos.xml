@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_helpdesk_sector_defect_tree" model="ir.ui.view">
+        <field name="name">helpdesk.sector.defect.tree</field>
+        <field name="model">helpdesk.sector.defect</field>
+        <field name="arch" type="xml">
+            <tree editable="bottom">
+                <field name="name"/>
+                <field name="sector" options="{'no_create': True, 'no_open': True}"/>
+            </tree>
+        </field>
+    </record>
+
+    <record id="action_helpdesk_sector_defect" model="ir.actions.act_window">
+        <field name="name">Defectos por Sector</field>
+        <field name="res_model">helpdesk.sector.defect</field>
+        <field name="view_mode">tree</field>
+    </record>
+
+    <!-- Opcional: Menú en el menú de configuración o en tu módulo de helpdesk -->
+    <menuitem id="menu_helpdesk_sector_defect"
+              name="Tipos de defectos"
+              parent="helpdesk.helpdesk_menu_config" 
+              action="action_helpdesk_sector_defect"/>
+</odoo>

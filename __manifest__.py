@@ -21,6 +21,8 @@
 
     # any module necessary for this one to work correctly
     'depends': ['stock','quality_control','helpdesk'],
-
     # always loaded
+    "data": ["security/ir.model.access.csv",
+             "views/defectos.xml",
+            ],
 }
