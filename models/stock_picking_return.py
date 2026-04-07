@@ -13,116 +13,179 @@ class ReturnPicking(models.TransientModel):
         compute='_compute_allowed_product_ids',
         string="Productos permitidos para devolución"
     )
+    fixed_product_id = fields.Many2one(
+        'product.product',
+        string='Producto fijo'
+    )
+    picking_type_id = fields.Many2one(
+        'stock.picking.type',
+        string="Tipo de operación",
+        domain="[('code','=',operation_type)]"
+    )
+    operation_type = fields.Selection([
+        ('incoming','Recepción'),
+        ('outgoing','Entrega')
+    ], string="Tipo", default='incoming')
+
+    location_source_id = fields.Many2one(
+        'stock.location',
+        string='Ubicación de Origen',
+        domain="[('usage', '!=', 'view')]"
+    )
+    
+    location_dest_id = fields.Many2one(
+        'stock.location',
+        string='Ubicación de destino',
+        domain="[('usage', '!=', 'view')]"
+    )
+    
+    @api.onchange('picking_type_id')
+    def _onchange_picking_type(self):
+        if not self.picking_type_id:
+            return
+    
+        customer_location = self.env['stock.location'].search(
+            [('usage', '=', 'customer')],
+            limit=1
+        )
+    
+        self.location_source_id = (
+            self.picking_type_id.default_location_src_id.id
+            or customer_location.id
+            or self.location_source_id
+        )
+    
+        self.location_dest_id = (
+            self.picking_type_id.default_location_dest_id.id
+            or customer_location.id
+            or self.location_dest_id
+        )
+        
+    @api.onchange('operation_type')
+    def _onchange_operation_type(self):
+        picking_type = self.env['stock.picking.type'].search([
+            ('code', '=', self.operation_type)
+        ], limit=1)
+    
+        if picking_type:
+            self.picking_type_id = picking_type
+
+    @api.depends('picking_id')
+    def _compute_sale_order_id(self):
+        for r in self:
+            r.sale_order_id = r.picking_id.sale_id
+
+    @api.depends('sale_order_id')
+    def _compute_picking_id(self):
+        for r in self:
+            _logger.info("Overwrite_picking")
+            return False
 
 
     def _create_returns(self):
         selected_lines = self.product_return_moves.filtered('selected')
-        _logger.info(selected_lines)
-        for return_move in selected_lines.mapped('move_id'):
-            return_move.move_dest_ids.filtered(lambda m: m.state not in ('done', 'cancel'))._do_unreserve()
+        
+        if not selected_lines:
+            raise UserError(_("Please select at least one product."))
+            
+        if not self.picking_id:
+            customer_location = self.env['stock.location'].search(
+                [('usage', '=', 'customer')],
+                limit=1
+            )
+        
+            location_id = (
+                self.location_source_id.id
+                or self.picking_type_id.default_location_src_id.id
+            )
+            
+            location_dest_id = (
+                self.location_dest_id.id
+                or self.picking_type_id.default_location_dest_id.id
+            )
+            
+            picking = self.env['stock.picking'].create({
+                'partner_id': self.ticket_id.partner_id.id if self.ticket_id.partner_id else False,
+                'picking_type_id': self.picking_type_id.id,
+                'location_id': location_id,
+                'location_dest_id': location_dest_id,
+                'origin': f'Ticket #{self.ticket_id.ticket_ref}' if self.ticket_id else '',
+            })
+        else:
+            picking = self.picking_id.copy(self._prepare_picking_default_values())
+            
+        for line in selected_lines:
+            self.env['stock.move'].create({
+                'name': line.product_id.display_name,
+                'product_id': line.product_id.id,
+                'product_uom_qty': line.quantity,
+                'product_uom': line.uom_id.id,
+                'picking_id': picking.id,
+                'location_id': picking.location_id.id,
+                'location_dest_id': picking.location_dest_id.id,
+            })
+        picking.action_confirm()
+        picking.action_assign()
+    
+        return picking.id, picking.picking_type_id.id
 
-        # create new picking for returned products
-        new_picking = self.picking_id.copy(self._prepare_picking_default_values())
-        picking_type_id = new_picking.picking_type_id.id
-        new_picking.message_post_with_source(
-            'mail.message_origin_link',
-            render_values={'self': new_picking, 'origin': self.picking_id},
-            subtype_xmlid='mail.mt_note',
-        )
-        returned_lines = 0
-        for return_line in selected_lines:
-            if not return_line.move_id:
-                raise UserError(_("You have manually created product lines, please delete them to proceed."))
-            if not float_is_zero(return_line.quantity, precision_rounding=return_line.uom_id.rounding):
-                returned_lines += 1
-                vals = self._prepare_move_default_values(return_line, new_picking)
-                r = return_line.move_id.copy(vals)
-                vals = {}
-
-                # +--------------------------------------------------------------------------------------------------------+
-                # |       picking_pick     <--Move Orig--    picking_pack     --Move Dest-->   picking_ship
-                # |              | returned_move_ids              ↑                                  | returned_move_ids
-                # |              ↓                                | return_line.move_id              ↓
-                # |       return pick(Add as dest)          return toLink                    return ship(Add as orig)
-                # +--------------------------------------------------------------------------------------------------------+
-                move_orig_to_link = return_line.move_id.move_dest_ids.mapped('returned_move_ids')
-                # link to original move
-                move_orig_to_link |= return_line.move_id
-                # link to siblings of original move, if any
-                move_orig_to_link |= return_line.move_id\
-                    .mapped('move_dest_ids').filtered(lambda m: m.state not in ('cancel'))\
-                    .mapped('move_orig_ids').filtered(lambda m: m.state not in ('cancel'))
-                move_dest_to_link = return_line.move_id.move_orig_ids.mapped('returned_move_ids')
-                # link to children of originally returned moves, if any. Note that the use of
-                # 'return_line.move_id.move_orig_ids.returned_move_ids.move_orig_ids.move_dest_ids'
-                # instead of 'return_line.move_id.move_orig_ids.move_dest_ids' prevents linking a
-                # return directly to the destination moves of its parents. However, the return of
-                # the return will be linked to the destination moves.
-                move_dest_to_link |= return_line.move_id.move_orig_ids.mapped('returned_move_ids')\
-                    .mapped('move_orig_ids').filtered(lambda m: m.state not in ('cancel'))\
-                    .mapped('move_dest_ids').filtered(lambda m: m.state not in ('cancel'))
-                vals['move_orig_ids'] = [(4, m.id) for m in move_orig_to_link]
-                vals['move_dest_ids'] = [(4, m.id) for m in move_dest_to_link]
-                r.write(vals)
-        if not returned_lines:
-            raise UserError(_("Please specify at least one non-zero quantity."))
-
-        new_picking.action_confirm()
-        new_picking.action_assign()
-        return new_picking.id, picking_type_id
-
-    @api.depends('picking_id','return_type')
+    @api.depends('picking_id','return_type','fixed_product_id')
     def _compute_moves_locations(self):
         for wizard in self:
             move_dest_exists = False
-            product_return_moves = [(5,)]  # limpia líneas existentes
+            product_return_moves = [(5,)]
+    
             if wizard.picking_id and wizard.picking_id.state != 'done':
                 raise UserError(_("You may only return Done pickings."))
-
-            # Plantilla de valores por defecto para las líneas
+    
             line_fields = [f for f in self.env['stock.return.picking.line']._fields.keys()]
             product_return_moves_data_tmpl = self.env['stock.return.picking.line'].default_get(line_fields)
-
-            for move in wizard.picking_id.move_ids:
+    
+            moves = wizard.picking_id.move_ids
+    
+            # ⭐ FILTRO PARA PRODUCTO FIJO
+            if not moves and wizard.fixed_product_id:
+                if wizard.return_type == 'item':
+                    bom = self.env['mrp.bom']._bom_find(products=wizard.fixed_product_id).get(wizard.fixed_product_id)
+                    if bom:
+                        for line in bom.bom_line_ids:
+                            product_return_moves_data = dict(product_return_moves_data_tmpl)
+                            product_return_moves_data.update({
+                                'product_id': line.product_id.id,
+                                'quantity': line.product_qty,
+                            })
+                            product_return_moves.append((0, 0, product_return_moves_data))
+                else:
+                    product_return_moves_data = dict(product_return_moves_data_tmpl)
+                    product_return_moves_data.update({
+                        'product_id': wizard.fixed_product_id.id,
+                        'quantity': 1,
+                    })
+                    product_return_moves.append((0, 0, product_return_moves_data))
+            _logger.info("Moves!!!")
+            _logger.info(moves)
+            for move in moves:
                 if move.state == 'cancel' or move.scrapped:
                     continue
+    
                 if move.move_dest_ids:
                     move_dest_exists = True
-
+    
                 if wizard.return_type == 'item':
-                    # ─── Devolución por COMPONENTES ───────────────────────
                     component_lines = wizard._get_component_return_lines(move, product_return_moves_data_tmpl)
                     product_return_moves.extend(component_lines)
+    
                 else:
-                    # ─── Devolución normal (producto completo) ───────────
                     product_return_moves_data = dict(product_return_moves_data_tmpl)
                     product_return_moves_data.update(
                         wizard._prepare_stock_return_picking_line_vals_from_move(move)
                     )
                     product_return_moves.append((0, 0, product_return_moves_data))
-
-            if wizard.picking_id and not product_return_moves:
-                raise UserError(_("No products to return (only lines in Done state and not fully returned yet can be returned)."))
-
-            if wizard.picking_id:
-                wizard.product_return_moves = product_return_moves
-                wizard.move_dest_exists = move_dest_exists
-                wizard.parent_location_id = (
-                    wizard.picking_id.picking_type_id.warehouse_id
-                    and wizard.picking_id.picking_type_id.warehouse_id.view_location_id.id
-                    or wizard.picking_id.location_id.location_id.id
-                )
-                wizard.original_location_id = wizard.picking_id.location_id.id
-                location_id = wizard.picking_id.location_id.id
-                if (
-                    wizard.picking_id.picking_type_id.return_picking_type_id
-                    and wizard.picking_id.picking_type_id.return_picking_type_id.default_location_dest_id.return_location
-                ):
-                    location_id = wizard.picking_id.picking_type_id.return_picking_type_id.default_location_dest_id.id
-                wizard.location_id = (
-                    wizard.picking_id.picking_type_id.default_location_return_id.id or location_id
-                )
-
+    
+            if wizard.picking_id and len(product_return_moves) <= 1:
+                raise UserError(_("No products to return."))
+    
+            wizard.product_return_moves = product_return_moves
 
     @api.model
     def _prepare_stock_return_picking_line_vals_from_move(self, stock_move, return_type='full'):
@@ -227,10 +290,9 @@ class ReturnPicking(models.TransientModel):
     @api.depends('picking_id', 'return_type','product_return_moves','product_return_moves.product_id')
     def _compute_allowed_product_ids(self):
         for wizard in self:
-            if not wizard.picking_id:
-                wizard.allowed_product_ids = False
-                continue
-    
+            #if not wizard.picking_id:
+            #    wizard.allowed_product_ids = False
+            #    continue
             # Productos inicialmente permitidos según lógica de devolución
             all_allowed_ids = set(wizard._get_allowed_product_ids())
             
@@ -249,6 +311,21 @@ class ReturnPicking(models.TransientModel):
         según el picking_id y return_type del wizard actual.
         """
         self.ensure_one()
+        _logger.info(self.fixed_product_id)
+        if self.fixed_product_id:
+            if self.return_type == 'full':
+                _logger.info(self.fixed_product_id.id)
+                return [self.fixed_product_id.id]
+            elif self.return_type == 'item':
+                bom = self.env['mrp.bom'].search([
+                    ('product_tmpl_id', '=', self.fixed_product_id.product_tmpl_id.id)
+                ], limit=1)
+    
+                if bom:
+                    _logger.info(bom.bom_line_ids.product_id.ids)
+                    return bom.bom_line_ids.product_id.ids
+                return []
+    
         if not self.picking_id:
             return []
     

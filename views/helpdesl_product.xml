@@ -1,0 +1,27 @@
+<odoo>
+    <record id="view_helpdesk_ticket_form_inherit_components" model="ir.ui.view">
+        <field name="name">helpdesk.ticket.form.inherit.components</field>
+        <field name="model">helpdesk.ticket</field>
+        <field name="priority">999</field>
+        <field name="inherit_id" ref="helpdesk.helpdesk_ticket_view_form"/>
+        <field name="arch" type="xml">
+            
+            <field name="email_cc" position="after">
+    
+                <field name="component_line_ids" nolabel="1" colspan="2">
+                    <tree editable="bottom">
+                        <field name="helpdesk_ticket_id" column_invisible="True"/>
+                        <field name="suitable_component_ids" column_invisible="True"/>
+                        <field name="product_id" string="Componente"/>
+                        <field name="description"/>
+                        <field name="cost"/>
+                        <field name="quantity"/>
+                    </tree>
+                </field>
+                <field name="component_cost" string="Costo total"/>
+                <field name="component_total_value" string="Valor total"/>
+            </field>
+    
+        </field>
+    </record>
+</odoo>

@@ -20,9 +20,10 @@
     'version': '1.0',
 
     # any module necessary for this one to work correctly
-    'depends': ['stock','quality_control','helpdesk'],
+    'depends': ['stock','quality_control','helpdesk','helpdesk_stock','product'],
     # always loaded
     "data": ["security/ir.model.access.csv",
              "views/defectos.xml",
+             "views/helpdesl_product.xml",
             ],
 }
