@@ -3,6 +3,7 @@ from odoo import models, fields, api
 from odoo.tools.translate import _
 from odoo.exceptions import UserError
 from odoo.tools import email_normalize, is_html_empty, html_escape, html2plaintext, parse_contact_from_email
+import random
 import logging
 
 _logger = logging.getLogger(__name__)
@@ -157,6 +158,10 @@ class Defecto(models.Model):
     _name = 'helpdesk.sector.defect'
     name = fields.Char(string='Defecto')
     sector = fields.Many2one('hr.department',string='Sector a cargo')
+    team_id = fields.Many2one(
+        'helpdesk.team',
+        string='Equipo de soporte'
+    )
 
 class HelpdeskTag(models.Model):
     _inherit = 'helpdesk.tag'
@@ -203,7 +208,33 @@ class Helpdesk(models.Model):
         compute="_compute_component_cost",
         store=True
     )
-
+    quality_check_count = fields.Integer(
+        string='Cantidad de Alertas de Calidad',
+        compute='_compute_quality_count',
+        store=True,
+        tracking=True
+    )
+    quality_check_summary = fields.Text(
+        string='Resumen de Alertas',
+        compute='_compute_quality_count',
+        store=True,
+        tracking=True
+    )
+    
+    @api.depends('quality_check_ids', 'quality_check_ids.name')
+    def _compute_quality_count(self):
+        for ticket in self:
+            alerts = ticket.quality_check_ids
+    
+            # contador
+            ticket.quality_check_count = len(alerts)
+    
+            # resumen tipo lista
+            if alerts:
+                names = alerts.mapped('display_name')  # o 'name'
+                ticket.quality_check_summary = '\n'.join(names)
+            else:
+                ticket.quality_check_summary = False
 
     @api.depends('component_line_ids.subtotal')
     def _compute_component_total_value(self):
@@ -285,8 +316,8 @@ class Helpdesk(models.Model):
             comp_attrs = self._get_product_attribute_value_ids(comp)
     
             # 🔥 Filtro: solo si coinciden
-            if comp_attrs and comp_attrs != root_attrs:
-                continue
+            #if comp_attrs and comp_attrs != root_attrs:
+            #    continue
     
             components.add(comp.id)
     
@@ -394,6 +425,7 @@ class Helpdesk(models.Model):
         for p in partners:
             email = p.support_email or p.email
             if email:
+                _logger.info("Notify_by_email")
                 _logger.info(email)
                 emails.append(email)
     
@@ -410,12 +442,103 @@ class Helpdesk(models.Model):
             **kwargs
         )
     
-        for recipient in recipients:
-            partner = recipient.get('partner')
-            if partner and partner.support_email:
-                recipient['email'] = partner.support_email
+        if not self:
+            return recipients
     
-        return recipients
+        ticket = self[0]
+    
+        assigned_user_id = ticket.user_id.id if ticket.user_id else None
+        assigned_partner_id = ticket.user_id.partner_id.id if ticket.user_id else None
+        customer_partner_id = ticket.partner_id.id if ticket.partner_id else None
+    
+        filtered = []
+    
+        for recipient in recipients:
+            partner_id = recipient.get('id')     # 👈 SIEMPRE viene
+            user_id = recipient.get('uid')       # 👈 para usuarios
+    
+            # 👉 Cliente (partner del ticket) SIEMPRE entra
+            if partner_id == customer_partner_id:
+                partner = self.env['res.partner'].browse(partner_id)
+                if partner.support_email:
+                    recipient['email'] = partner.support_email
+    
+                filtered.append(recipient)
+                continue
+    
+            # 👉 Usuario asignado (comparar por user_id)
+            if user_id and user_id == assigned_user_id:
+                filtered.append(recipient)
+                continue
+    
+            # ❌ todos los demás afuera
+    
+        return filtered
+
+
+    def write(self, vals):
+        if self.env.context.get('auto_routing'):
+            return super().write(vals)
+        res = super().write(vals)
+        if 'stage_id' in vals:
+            for ticket in self:
+
+                if not ticket.stage_id.auto_route:
+                    continue
+
+                if ticket.team_id.use_defect_routing and ticket.defect_type:
+                    next_team = ticket.defect_type.team_id
+                else:
+                    next_team = ticket.team_id.next_team_id
+
+                if not next_team:
+                    continue
+                user_id = False
+                if next_team.auto_assignment and next_team.member_ids:
+                    if next_team.assign_method == 'randomly':
+                        user = random.choice(next_team.member_ids)
+                    else:  # balanced
+                        users = next_team.member_ids
+                        counts = {
+                            user.id: self.search_count([
+                                ('team_id', '=', next_team.id),
+                                ('user_id', '=', user.id),
+                                ('stage_id.is_close', '=', False)
+                            ])
+                            for user in users
+                        }
+                        user = min(users, key=lambda u: counts[u.id])
+                    user_id = user.id
+                else:
+                    user_id = False
+                    
+                # buscar stage inicial del equipo destino
+                team = ticket.team_id
+                default_stage = False
+                # lógica condicional
+                if team.conditional_field_id:
+                    field_name = team.conditional_field_id.name
+                    field_value = getattr(ticket, field_name, False)
+                
+                    if field_value:
+                        default_stage = team.conditional_stage_id
+                
+                # Fallback normal
+                if not default_stage:
+                    if team.return_stage_id:
+                        default_stage = team.return_stage_id
+                    else:
+                        default_stage = self.env['helpdesk.stage'].search([
+                            ('team_ids', 'in', next_team.id)
+                        ], order='sequence asc', limit=1)
+
+                ticket.with_context(auto_routing=True).write({
+                    'team_id': next_team.id,
+                    'stage_id': default_stage.id if default_stage else False,
+                    'user_id': user_id,
+                })
+
+        return res
 
 class QualityCheck(models.Model):
     _inherit = 'quality.alert'

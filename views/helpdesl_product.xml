@@ -7,7 +7,9 @@
         <field name="arch" type="xml">
             
             <field name="email_cc" position="after">
-    
+                <field name="quality_check_summary" invisible="1"/>
+                <field name="quality_check_count" invisible="1"/>
+                <field name="product_id" string="Producto" domain="[&quot;&amp;&quot;, (&quot;sale_ok&quot;, &quot;=&quot;, True), (&quot;active&quot;, &quot;in&quot;, [True, False])]"/>
                 <field name="component_line_ids" nolabel="1" colspan="2">
                     <tree editable="bottom">
                         <field name="helpdesk_ticket_id" column_invisible="True"/>

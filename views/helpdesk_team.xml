@@ -1,0 +1,42 @@
+<odoo>
+    <data>
+        <record id="view_helpdesk_team_form_inherit_derivaciones" model="ir.ui.view">
+            <field name="name">helpdesk.team.form.derivaciones</field>
+            <field name="model">helpdesk.team</field>
+            <field name="inherit_id" ref="helpdesk.helpdesk_team_view_form"/>
+            <field name="arch" type="xml">
+        
+                <!-- Insertamos después de After-Sales -->
+                <xpath expr="//div[@id='after-sales']" position="after">
+        
+                    <h2>Derivaciones</h2>
+                    <div class="row mt32 o_settings_container" id="derivaciones">
+        
+                        <setting help="Siguiente equipo">
+                            <field name="next_team_id"/>
+                        </setting>
+        
+                        <setting help="Equipo según defecto">
+                            <field name="use_defect_routing"/>
+                        </setting>
+        
+                        <setting help="Etapa en nuevo equipo">
+                            <field name="return_stage_id"/>
+                        </setting>
+        
+                        <setting help="Campo condicional">
+                            <field name="conditional_field_id"/>
+                        </setting>
+        
+                        <setting help="Etapa condicional">
+                            <field name="conditional_stage_id"/>
+                        </setting>
+        
+                    </div>
+        
+                </xpath>
+        
+            </field>
+        </record>
+        </data>
+</odoo>
