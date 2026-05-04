@@ -11,14 +11,14 @@
                 <field name="quality_check_count" invisible="1"/>
                 <field name="product_id" string="Producto" domain="[&quot;&amp;&quot;, (&quot;sale_ok&quot;, &quot;=&quot;, True), (&quot;active&quot;, &quot;in&quot;, [True, False])]"/>
                 <field name="component_line_ids" nolabel="1" colspan="2">
-                    <tree editable="bottom">
+                    <list editable="bottom">
                         <field name="helpdesk_ticket_id" column_invisible="True"/>
                         <field name="suitable_component_ids" column_invisible="True"/>
                         <field name="product_id" string="Componente"/>
                         <field name="description"/>
                         <field name="cost"/>
                         <field name="quantity"/>
-                    </tree>
+                    <list>
                 </field>
                 <field name="component_cost" string="Costo total"/>
                 <field name="component_total_value" string="Valor total"/>

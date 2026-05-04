@@ -1,3 +1,4 @@
 id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
 access_helpdesk_sector_defect_user,access.helpdesk.sector.defect.user,model_helpdesk_sector_defect,base.group_user,1,1,1,1
 access_helpdesk_ticket_component,helpdesk.ticket.component,model_helpdesk_ticket_component,base.group_user,1,1,1,1
+access_helpdesk_ticket_type_user,helpdesk.ticket.type.user,model_helpdesk_ticket_type,base.group_user,1,1,1,1
