@@ -18,7 +18,7 @@
                         <field name="description"/>
                         <field name="cost"/>
                         <field name="quantity"/>
-                    <list>
+                    </list>
                 </field>
                 <field name="component_cost" string="Costo total"/>
                 <field name="component_total_value" string="Valor total"/>
