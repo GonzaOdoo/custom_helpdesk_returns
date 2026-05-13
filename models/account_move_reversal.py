@@ -163,9 +163,9 @@ class Defecto(models.Model):
         string='Equipo de soporte'
     )
 
-class HelpdeskTag(models.Model):
-    _inherit = 'helpdesk.tag'
-    related_ticket = fields.Many2one('helpdesk.ticket.type',string='Ticket relacionado')
+#class HelpdeskTag(models.Model):
+#    _inherit = 'helpdesk.tag'
+#    related_ticket = fields.Many2one('helpdesk.ticket.type',string='Ticket relacionado')
 
 
 class Helpdesk(models.Model):
