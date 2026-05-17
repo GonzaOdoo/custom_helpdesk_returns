@@ -5,7 +5,19 @@
         <field name="priority">999</field>
         <field name="inherit_id" ref="helpdesk.helpdesk_ticket_view_form"/>
         <field name="arch" type="xml">
-            
+            <xpath expr="//field[@name='active']" position="after">
+                <field name="ticket_ref" string="Ticket ID"/>
+            </xpath>
+            <xpath expr="//field[@name='tag_ids']" position="attributes">
+                <attribute name="domain">[('related_ticket', '=', ticket_type_id)]</attribute>
+            </xpath>
+             <xpath expr="//field[@name='tag_ids']" position="after">
+                <field name="defect_type" string="Sector afectado"/>
+                <field name="sector_in_charge"/>
+            </xpath>
+            <xpath expr="//field[@name='partner_id']" position="after">
+                <field name="partner_email" force_save="1" readonly="True" invisible="0"/>
+            </xpath>
             <field name="email_cc" position="after">
                 <field name="quality_check_summary" invisible="1"/>
                 <field name="quality_check_count" invisible="1"/>
@@ -23,7 +35,6 @@
                 <field name="component_cost" string="Costo total"/>
                 <field name="component_total_value" string="Valor total"/>
             </field>
-    
         </field>
     </record>
 </odoo>

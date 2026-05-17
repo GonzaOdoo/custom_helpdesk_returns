@@ -219,6 +219,10 @@ class Helpdesk(models.Model):
         store=True,
         tracking=True
     )
+    ticket_type_id = fields.Many2one(
+        'helpdesk.ticket.type',
+        string='Tipo de Ticket'
+    )
     
     @api.depends('quality_check_ids', 'quality_check_ids.name')
     def _compute_quality_count(self):
@@ -371,14 +375,24 @@ class Helpdesk(models.Model):
             return ticket_email_normalized != partner_email_normalized
         return False
         
-    def _message_get_suggested_recipients(self):
-        recipients = super(Helpdesk, self)._message_get_suggested_recipients()
+    def _message_get_suggested_recipients(self, *args, **kwargs):
+        recipients = super()._message_get_suggested_recipients(*args, **kwargs)
+    
         try:
             for ticket in self:
                 if ticket.partner_id and ticket.partner_id.support_email:
-                    ticket._message_add_suggested_recipient(recipients, partner=ticket.partner_id, reason=_('Customer'))
+                    ticket._message_add_suggested_recipient(
+                        recipients,
+                        partner=ticket.partner_id,
+                        reason=_('Customer')
+                    )
+    
                 elif ticket.partner_email:
-                    ticket._message_add_suggested_recipient(recipients, email=ticket.partner_email, reason=_('Customer Email'))
+                    ticket._message_add_suggested_recipient(
+                        recipients,
+                        email=ticket.partner_email,
+                        reason=_('Customer Email')
+                    )
         except AccessError:  # no read access rights -> just ignore suggested recipients because this implies modifying followers
             pass
         return recipients
