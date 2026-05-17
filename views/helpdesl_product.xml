@@ -8,9 +8,9 @@
             <xpath expr="//field[@name='active']" position="after">
                 <field name="ticket_ref" string="Ticket ID"/>
             </xpath>
-            <xpath expr="//field[@name='tag_ids']" position="attributes">
+            <!--<xpath expr="//field[@name='tag_ids']" position="attributes">
                 <attribute name="domain">[('related_ticket', '=', ticket_type_id)]</attribute>
-            </xpath>
+            </xpath>-->
              <xpath expr="//field[@name='tag_ids']" position="after">
                 <field name="defect_type" string="Sector afectado"/>
                 <field name="sector_in_charge"/>
